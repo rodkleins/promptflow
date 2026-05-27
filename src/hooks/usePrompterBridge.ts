@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { type PrompterSettings, usePrompter } from "../store/prompter";
 import type { DisplayInfo } from "../types";
 
-const BROADCAST_FIELDS: (keyof PrompterSettings | "isPlaying")[] = [
+const BROADCAST_FIELDS: (keyof PrompterSettings | "isPlaying" | "voiceSyncActive" | "voiceFollow")[] = [
   "isPlaying",
   "scrollSpeed",
   "fontSize",
@@ -18,6 +18,8 @@ const BROADCAST_FIELDS: (keyof PrompterSettings | "isPlaying")[] = [
   "contrast",
   "orientationDeg",
   "isMirrored",
+  "voiceSyncActive",
+  "voiceFollow",
 ];
 
 function collectState() {
@@ -36,6 +38,7 @@ function collectState() {
     contrast: s.contrast,
     orientationDeg: s.orientationDeg,
     isMirrored: s.isMirrored,
+    voiceFollowing: s.voiceSyncActive && s.voiceFollow,
   };
 }
 

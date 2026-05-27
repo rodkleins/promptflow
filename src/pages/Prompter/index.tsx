@@ -1,10 +1,11 @@
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, useState } from "react";
 import { getScript } from "../../db/client";
 import { useScroll } from "../../hooks/useScroll";
+import { dlog } from "../../lib/log";
 import type { Script } from "../../types";
 
 export interface PrompterState {
@@ -21,6 +22,41 @@ export interface PrompterState {
   contrast: number;
   orientationDeg: number;
   isMirrored: boolean;
+  voiceFollowing: boolean;
+}
+
+// Tokenize visible DOM text into one Range per alphanumeric run, mirroring
+// the editor's tokenize() in useVoicePacing so word indexes line up exactly.
+function buildWordRanges(root: HTMLElement): Range[] {
+  const ranges: Range[] = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const isAlphaNum = (ch: string) => /[\p{L}\p{N}]/u.test(ch);
+  let node: Text | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: walker pattern
+  while ((node = walker.nextNode() as Text | null)) {
+    const text = node.nodeValue ?? "";
+    let i = 0;
+    while (i < text.length) {
+      while (i < text.length && !isAlphaNum(text[i])) i++;
+      if (i >= text.length) break;
+      const start = i;
+      while (i < text.length && isAlphaNum(text[i])) i++;
+      const range = new Range();
+      range.setStart(node, start);
+      range.setEnd(node, i);
+      ranges.push(range);
+    }
+  }
+  return ranges;
+}
+
+function applyWordHighlight(wordIndex: number, ranges: Range[]) {
+  const range = ranges[wordIndex];
+  if (!range) return;
+  const HighlightCtor = (window as unknown as { Highlight?: typeof Highlight }).Highlight;
+  const highlights = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
+  if (!HighlightCtor || !highlights) return;
+  highlights.set("voice-cursor", new HighlightCtor(range));
 }
 
 const DEFAULT_STATE: PrompterState = {
@@ -37,6 +73,7 @@ const DEFAULT_STATE: PrompterState = {
   contrast: 100,
   orientationDeg: 0,
   isMirrored: true,
+  voiceFollowing: false,
 };
 
 interface Props {
@@ -48,7 +85,45 @@ export function PrompterPage({ scriptId }: Props) {
   const [state, setState] = useState<PrompterState>(DEFAULT_STATE);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showControls, setShowControls] = useState(true);
+  const [voiceMultiplier, setVoiceMultiplier] = useState(1);
+  const [lastDelta, setLastDelta] = useState<number | null>(null);
+  const [speakerRatio, setSpeakerRatio] = useState<number | null>(null);
+  const [currentRatio, setCurrentRatio] = useState<number | null>(null);
+  const [showVoiceDebug, setShowVoiceDebug] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const wordRangesRef = useRef<Range[]>([]);
+  // Multiplier driven by voice events (1+k·delta, smoothed).
+  const activeMultiplierRef = useRef(1);
+  // Envelope that fades to 0 when the speaker goes silent. Multiplied into the active one.
+  const silenceEnvelopeRef = useRef(1);
+  const lastVoiceAtRef = useRef(0);
+
+  function publishMultiplier() {
+    const m = activeMultiplierRef.current * silenceEnvelopeRef.current;
+    setVoiceMultiplier(m);
+  }
+
+  // Silence detector: fade out the envelope after 2 s of no voice events, over 3 s.
+  useEffect(() => {
+    if (!state.voiceFollowing) {
+      activeMultiplierRef.current = 1;
+      silenceEnvelopeRef.current = 1;
+      setVoiceMultiplier(1);
+      lastVoiceAtRef.current = 0;
+      return;
+    }
+    const id = setInterval(() => {
+      if (lastVoiceAtRef.current === 0) return;
+      const silentMs = Date.now() - lastVoiceAtRef.current;
+      if (silentMs <= 2000) {
+        silenceEnvelopeRef.current = 1;
+      } else {
+        silenceEnvelopeRef.current = Math.max(0, 1 - (silentMs - 2000) / 3000);
+      }
+      publishMultiplier();
+    }, 200);
+    return () => clearInterval(id);
+  }, [state.voiceFollowing]);
 
   useEffect(() => {
     (async () => {
@@ -65,6 +140,66 @@ export function PrompterPage({ scriptId }: Props) {
       const c = scrollContainerRef.current;
       if (c) c.scrollTop = Math.max(0, c.scrollHeight * e.payload.ratio);
     });
+    const unlistenVoicePos = listen<{ ratio: number; wordIndex?: number }>("prompter:voice-pos", (e) => {
+      if (typeof e.payload.wordIndex === "number") {
+        applyWordHighlight(e.payload.wordIndex, wordRangesRef.current);
+      }
+      const c = scrollContainerRef.current;
+      if (!c) {
+        dlog("[voice-pacing/prompter]", "no scroll container");
+        return;
+      }
+      const scrollable = Math.max(1, c.scrollHeight - c.clientHeight);
+      const currentRatio = c.scrollTop / scrollable;
+      const delta = e.payload.ratio - currentRatio;
+      lastVoiceAtRef.current = Date.now();
+      silenceEnvelopeRef.current = 1;
+
+      // Position lock: gap > 10% of script → snap-scroll to the speaker.
+      if (Math.abs(delta) > 0.1) {
+        const target = Math.max(0, c.scrollHeight * e.payload.ratio - c.clientHeight * 0.4);
+        c.scrollTo({ top: target, behavior: "smooth" });
+        activeMultiplierRef.current = 1;
+        publishMultiplier();
+        setLastDelta(delta);
+        setSpeakerRatio(e.payload.ratio);
+        setCurrentRatio(currentRatio);
+        dlog(
+          "[voice-pacing/prompter]",
+          "POSITION LOCK speaker=",
+          e.payload.ratio.toFixed(3),
+          "current=",
+          currentRatio.toFixed(3),
+          "delta=",
+          delta.toFixed(3),
+        );
+        return;
+      }
+
+      // Speed control: 1 + 40·delta, clamped [0, 4], fast EMA (40/60).
+      const target = Math.min(4, Math.max(0, 1 + 40 * delta));
+      const before = activeMultiplierRef.current;
+      activeMultiplierRef.current = activeMultiplierRef.current * 0.4 + target * 0.6;
+      publishMultiplier();
+      setLastDelta(delta);
+      setSpeakerRatio(e.payload.ratio);
+      setCurrentRatio(currentRatio);
+      dlog(
+        "[voice-pacing/prompter]",
+        "speaker=",
+        e.payload.ratio.toFixed(3),
+        "current=",
+        currentRatio.toFixed(3),
+        "delta=",
+        delta.toFixed(3),
+        "target×",
+        target.toFixed(2),
+        "active",
+        before.toFixed(2),
+        "→",
+        activeMultiplierRef.current.toFixed(2),
+      );
+    });
     const unlistenRestart = listen("prompter:restart", () => {
       const c = scrollContainerRef.current;
       if (c) c.scrollTop = 0;
@@ -78,6 +213,7 @@ export function PrompterPage({ scriptId }: Props) {
     return () => {
       unlistenState.then((f) => f());
       unlistenJump.then((f) => f());
+      unlistenVoicePos.then((f) => f());
       unlistenRestart.then((f) => f());
       unlistenCountdown.then((f) => f());
       unlistenClose.then((f) => f());
@@ -100,13 +236,38 @@ export function PrompterPage({ scriptId }: Props) {
     };
   }, []);
 
-  // Local DOM-level Esc + Q listener — works even if the main window has been
-  // closed and the global shortcut has been unregistered.
+  // Keyboard shortcuts inside the prompter window. Forwarded to the editor so
+  // the playing/speed store stays the source of truth.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" || (e.key.toLowerCase() === "q" && (e.metaKey || e.ctrlKey))) {
         e.preventDefault();
         getCurrentWindow().close();
+        return;
+      }
+      if (e.key === " ") {
+        e.preventDefault();
+        emit("prompter:cmd", { action: "toggle-play" }).catch(() => undefined);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        emit("prompter:cmd", { action: "speed-up" }).catch(() => undefined);
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        emit("prompter:cmd", { action: "speed-down" }).catch(() => undefined);
+        return;
+      }
+      if (e.key.toLowerCase() === "r" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        emit("prompter:cmd", { action: "restart" }).catch(() => undefined);
+        return;
+      }
+      if (e.key.toLowerCase() === "d" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setShowVoiceDebug((v) => !v);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -128,10 +289,45 @@ export function PrompterPage({ scriptId }: Props) {
     setTimeout(tick, 1000);
   }
 
+  const effectiveSpeed = state.scrollSpeed * (state.voiceFollowing ? voiceMultiplier : 1);
   useScroll(scrollContainerRef, {
-    speed: state.scrollSpeed,
+    speed: effectiveSpeed,
     isPlaying: state.isPlaying && countdown == null,
   });
+
+  // Build the per-word DOM Range index after the script renders. Re-run when the
+  // script id changes so we always point at the right text.
+  useEffect(() => {
+    if (!script) return;
+    // Wait a frame so Tiptap has actually committed its DOM.
+    const id = requestAnimationFrame(() => {
+      const c = scrollContainerRef.current;
+      if (!c) return;
+      wordRangesRef.current = buildWordRanges(c);
+      dlog("[voice-pacing/prompter]", "built word ranges:", wordRangesRef.current.length);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [script?.id]);
+
+  // Clear highlight when voice-following turns off so a stale word doesn't linger.
+  useEffect(() => {
+    if (state.voiceFollowing) return;
+    const highlights = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
+    highlights?.delete("voice-cursor");
+  }, [state.voiceFollowing]);
+  useEffect(() => {
+    dlog(
+      "[voice-pacing/prompter]",
+      "state",
+      {
+        voiceFollowing: state.voiceFollowing,
+        isPlaying: state.isPlaying,
+        baseSpeed: state.scrollSpeed,
+        mult: Number(voiceMultiplier.toFixed(2)),
+        effective: Number(effectiveSpeed.toFixed(2)),
+      },
+    );
+  }, [state.voiceFollowing, state.isPlaying, state.scrollSpeed, voiceMultiplier, effectiveSpeed]);
 
   const editor = useEditor(
     {
@@ -226,16 +422,53 @@ export function PrompterPage({ scriptId }: Props) {
         </div>
       )}
 
-      {/* Always-on close button — last-resort exit if everything else fails */}
-      <button
-        type="button"
-        onClick={() => getCurrentWindow().close()}
-        className="absolute top-3 right-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-white/90 hover:bg-red-600 hover:text-white"
+      {/* Voice-sync debug HUD — toggled by the D key / the [D] button */}
+      {state.voiceFollowing && showVoiceDebug && (
+        <div
+          className="pointer-events-none absolute top-3 left-3 z-10 rounded bg-black/70 px-3 py-2 font-mono text-[11px] leading-tight text-white/90"
+          style={{ transform: counterTransform }}
+        >
+          <div>voice-follow: ON</div>
+          <div>base speed: {state.scrollSpeed.toFixed(2)}</div>
+          <div>active mult: {activeMultiplierRef.current.toFixed(2)}×</div>
+          <div>silence env: {silenceEnvelopeRef.current.toFixed(2)}</div>
+          <div>effective mult: {voiceMultiplier.toFixed(2)}×</div>
+          <div>effective speed: {effectiveSpeed.toFixed(2)}</div>
+          <div>speaker: {speakerRatio == null ? "—" : speakerRatio.toFixed(3)}</div>
+          <div>prompter: {currentRatio == null ? "—" : currentRatio.toFixed(3)}</div>
+          <div>Δ: {lastDelta == null ? "—" : lastDelta.toFixed(3)}</div>
+          <div>playing: {state.isPlaying ? "yes" : "no"}</div>
+        </div>
+      )}
+
+      {/* Top-right controls: voice debug toggle + close */}
+      <div
+        className="absolute top-3 right-3 z-10 flex items-center gap-2"
         style={{ transform: counterTransform }}
-        title="Close prompter (Esc)"
       >
-        ×
-      </button>
+        {state.voiceFollowing && (
+          <button
+            type="button"
+            onClick={() => setShowVoiceDebug((v) => !v)}
+            className={`flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold ${
+              showVoiceDebug
+                ? "bg-indigo-600 text-white"
+                : "bg-black/70 text-white/80 hover:bg-black/90"
+            }`}
+            title="Toggle voice debug HUD (D)"
+          >
+            D
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => getCurrentWindow().close()}
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-black/70 text-white/90 hover:bg-red-600 hover:text-white"
+          title="Close prompter (Esc)"
+        >
+          ×
+        </button>
+      </div>
 
       {/* Floating transport hint */}
       {showControls && (

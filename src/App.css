@@ -77,3 +77,10 @@
 .drag-handle:active {
   cursor: grabbing;
 }
+
+/* ---- Voice-sync word highlight (prompter) ---- */
+::highlight(voice-cursor) {
+  background-color: rgba(99, 102, 241, 0.45);
+  color: inherit;
+  border-radius: 4px;
+}

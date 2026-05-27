@@ -1,3 +1,4 @@
+import { emit, listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import { Bookmarks } from "../../components/Bookmarks";
 import { ControlBar } from "../../components/ControlBar";
@@ -9,6 +10,7 @@ import { updateScript } from "../../db/client";
 import { useAutosave } from "../../hooks/useAutosave";
 import { useSettings } from "../../hooks/useSettings";
 import { useShortcuts } from "../../hooks/useShortcuts";
+import { useVoicePacing } from "../../hooks/useVoicePacing";
 import { normalizeBlocks } from "../../lib/normalizeBlocks";
 import { usePrompter } from "../../store/prompter";
 
@@ -33,6 +35,33 @@ export function EditorPage() {
 
   useSettings();
   useShortcuts();
+  useVoicePacing();
+
+  // Keyboard shortcuts sent from the prompter window arrive as prompter:cmd
+  // events. Apply them to the store; the bridge re-broadcasts state back.
+  useEffect(() => {
+    const promise = listen<{ action: string }>("prompter:cmd", (e) => {
+      const s = usePrompter.getState();
+      switch (e.payload.action) {
+        case "toggle-play":
+          if (s.isPlaying) s.pause();
+          else s.play();
+          break;
+        case "speed-up":
+          s.setSpeed(Math.min(5, s.scrollSpeed + 0.1));
+          break;
+        case "speed-down":
+          s.setSpeed(Math.max(0.5, s.scrollSpeed - 0.1));
+          break;
+        case "restart":
+          emit("prompter:restart").catch(() => undefined);
+          break;
+      }
+    });
+    return () => {
+      promise.then((f) => f()).catch(() => undefined);
+    };
+  }, []);
 
   useEffect(() => {
     if (!script) {

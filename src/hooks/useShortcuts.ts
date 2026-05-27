@@ -1,11 +1,13 @@
-import {
-  isRegistered,
-  register,
-  unregisterAll,
-} from "@tauri-apps/plugin-global-shortcut";
 import { useEffect } from "react";
 import { usePrompter } from "../store/prompter";
 import { usePrompterBridge } from "./usePrompterBridge";
+
+function isTypingTarget(el: EventTarget | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
 
 export function useShortcuts() {
   const prompterOpen = usePrompter((s) => s.prompterOpen);
@@ -14,60 +16,54 @@ export function useShortcuts() {
   useEffect(() => {
     if (!prompterOpen) return;
 
-    let cancelled = false;
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
 
-    (async () => {
-      try {
-        await unregisterAll();
-      } catch {
-        /* ignore */
+      const cur = usePrompter.getState();
+      switch (e.key) {
+        case " ":
+          e.preventDefault();
+          if (cur.isPlaying) cur.pause();
+          else cur.play();
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          cur.setSpeed(Math.min(5, cur.scrollSpeed + 0.1));
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          cur.setSpeed(Math.max(0.5, cur.scrollSpeed - 0.1));
+          break;
+        case "+":
+        case "=":
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            cur.setFontSize(Math.min(120, cur.fontSize + 2));
+          }
+          break;
+        case "-":
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            cur.setFontSize(Math.max(24, cur.fontSize - 2));
+          }
+          break;
+        case "r":
+        case "R":
+          if (!e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            restart();
+          }
+          break;
+        case "Escape":
+          e.preventDefault();
+          closePrompter();
+          break;
       }
+    };
 
-      const tryRegister = async (accelerator: string, handler: () => void) => {
-        try {
-          if (await isRegistered(accelerator)) return;
-          await register(accelerator, (event) => {
-            if (event.state === "Pressed") handler();
-          });
-        } catch (e) {
-          console.warn(`Could not register ${accelerator}`, e);
-        }
-      };
-
-      await tryRegister("Space", () => {
-        const cur = usePrompter.getState();
-        if (cur.isPlaying) cur.pause();
-        else cur.play();
-      });
-      await tryRegister("ArrowUp", () => {
-        const cur = usePrompter.getState();
-        cur.setSpeed(Math.min(5, cur.scrollSpeed + 0.1));
-      });
-      await tryRegister("ArrowDown", () => {
-        const cur = usePrompter.getState();
-        cur.setSpeed(Math.max(0.5, cur.scrollSpeed - 0.1));
-      });
-      await tryRegister("CommandOrControl+Equal", () => {
-        const cur = usePrompter.getState();
-        cur.setFontSize(Math.min(120, cur.fontSize + 2));
-      });
-      await tryRegister("CommandOrControl+Minus", () => {
-        const cur = usePrompter.getState();
-        cur.setFontSize(Math.max(24, cur.fontSize - 2));
-      });
-      await tryRegister("R", () => restart());
-      await tryRegister("Escape", () => {
-        closePrompter();
-      });
-
-      if (cancelled) {
-        await unregisterAll().catch(() => undefined);
-      }
-    })();
-
+    window.addEventListener("keydown", onKey);
     return () => {
-      cancelled = true;
-      unregisterAll().catch(() => undefined);
+      window.removeEventListener("keydown", onKey);
     };
   }, [prompterOpen, closePrompter, restart]);
 }
