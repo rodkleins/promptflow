@@ -21,6 +21,12 @@
     "sql:allow-execute",
     "sql:allow-select",
     "shell:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        { "name": "sidecars/whisper/whisper", "sidecar": true, "args": true }
+      ]
+    },
     "global-shortcut:default",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",

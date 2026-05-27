@@ -2,7 +2,7 @@ mod commands;
 mod db;
 
 use commands::{display, remote, voice_sync};
-use tauri::{Manager, WindowEvent};
+use tauri::{Listener, Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,8 +18,15 @@ pub fn run() {
                 .build(),
         )
         .manage(remote::RemoteServerHandle::new())
+        .manage(voice_sync::VoiceSyncHandle::new())
         .setup(|app| {
             remote::install_state_listener(app.handle());
+            // Capture frontend voice-pacing logs so we can debug without opening
+            // DevTools on the borderless prompter window.
+            let h = app.handle().clone();
+            h.listen("frontend:log", |event| {
+                eprintln!("[frontend] {}", event.payload());
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -28,6 +35,8 @@ pub fn run() {
             display::close_prompter_window,
             voice_sync::start_voice_sync,
             voice_sync::stop_voice_sync,
+            voice_sync::download_whisper_model,
+            voice_sync::check_whisper_model,
             remote::start_remote_server,
             remote::stop_remote_server,
             remote::broadcast_remote_state,

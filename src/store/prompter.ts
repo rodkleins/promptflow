@@ -29,6 +29,12 @@ interface PrompterState extends PrompterSettings {
 
   voiceSyncActive: boolean;
   voiceSyncLanguage: string;
+  voiceSyncModel: string;
+  voiceFollow: boolean;
+  setVoiceSyncActive: (active: boolean) => void;
+  setVoiceSyncLanguage: (language: string) => void;
+  setVoiceSyncModel: (model: string) => void;
+  setVoiceFollow: (follow: boolean) => void;
 
   remotePort: number | null;
   localIp: string | null;
@@ -82,6 +88,12 @@ export const usePrompter = create<PrompterState>((set) => ({
 
   voiceSyncActive: false,
   voiceSyncLanguage: "pt",
+  voiceSyncModel: "tiny",
+  voiceFollow: true,
+  setVoiceSyncActive: (voiceSyncActive) => set({ voiceSyncActive }),
+  setVoiceSyncLanguage: (voiceSyncLanguage) => set({ voiceSyncLanguage }),
+  setVoiceSyncModel: (voiceSyncModel) => set({ voiceSyncModel }),
+  setVoiceFollow: (voiceFollow) => set({ voiceFollow }),
 
   remotePort: null,
   localIp: null,

@@ -97,6 +97,17 @@ Outputs:
 - macOS: `src-tauri/target/release/bundle/dmg/PromptFlow_*.dmg`
 - Windows: `src-tauri/target/release/bundle/msi/PromptFlow_*.msi`
 
+### Build the Whisper sidecar (required for Voice Sync)
+The whisper.cpp binary is not committed. Build it once per host with:
+```bash
+./scripts/build-whisper.sh
+```
+The script clones `whisper.cpp` into `src-tauri/sidecars/whisper/whisper.cpp/`, builds the
+`whisper-cli` target, and installs it as `src-tauri/sidecars/whisper/whisper-<target-triple>`
+where Tauri's `externalBin` resolver expects it. Requires `cmake` and a C++ toolchain.
+The model file (`ggml-tiny.bin` or `ggml-base.bin`) is downloaded on demand from the
+Settings → Voice Sync panel into `$APPDATA/promptflow/models/`.
+
 ---
 
 ## Project structure

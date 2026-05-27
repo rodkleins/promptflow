@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { usePrompter } from "../../store/prompter";
 import { RemotePanel } from "../RemotePanel";
+import { VoiceSyncPanel } from "../VoiceSyncPanel";
 
 const FONT_FAMILIES: { label: string; value: string }[] = [
   { label: "System", value: 'system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif' },
@@ -215,6 +216,10 @@ export function SettingsPanel() {
           unit="s"
           onChange={(v) => apply({ countdownSeconds: v })}
         />
+      </Section>
+
+      <Section title="Voice Sync">
+        <VoiceSyncPanel />
       </Section>
 
       <Section title="Remote">

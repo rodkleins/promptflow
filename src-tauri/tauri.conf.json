@@ -37,6 +37,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "externalBin": [
+      "sidecars/whisper/whisper"
+    ],
     "macOS": {
       "entitlements": "entitlements.plist"
     }
