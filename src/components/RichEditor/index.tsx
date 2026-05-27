@@ -1,6 +1,5 @@
 import { type Content, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import GlobalDragHandle from "tiptap-extension-global-drag-handle";
 import { useEffect } from "react";
 
 export interface RichEditorChange {
@@ -36,13 +35,7 @@ function parseInitial(content: string): Content {
 export function RichEditor({ scriptId, initialContent, onChange }: Props) {
   const editor = useEditor(
     {
-      extensions: [
-        StarterKit,
-        GlobalDragHandle.configure({
-          dragHandleWidth: 20,
-          scrollTreshold: 100,
-        }),
-      ],
+      extensions: [StarterKit],
       content: parseInitial(initialContent),
       editorProps: {
         attributes: {
@@ -77,7 +70,7 @@ export function RichEditor({ scriptId, initialContent, onChange }: Props) {
   );
 
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || editor.isDestroyed) return;
     const next = parseInitial(initialContent);
     if (JSON.stringify(editor.getJSON()) !== JSON.stringify(next)) {
       editor.commands.setContent(next, { emitUpdate: false });

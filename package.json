@@ -25,7 +25,6 @@
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "tiptap-extension-global-drag-handle": "^0.1.18",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
