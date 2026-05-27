@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <title>PromptFlow Remote</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0a0a;
+      --panel: #1a1a1a;
+      --border: #2a2a2a;
+      --muted: #888;
+      --text: #f5f5f5;
+      --indigo: #6366f1;
+      --indigo-hover: #4f46e5;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }
+    .status {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; color: var(--muted);
+    }
+    .status .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
+    .status.connected .dot { background: #10b981; }
+    .status.connecting .dot { background: #eab308; }
+    .status.disconnected .dot { background: #ef4444; }
+
+    main { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+
+    .big-button {
+      width: 100%;
+      padding: 36px 20px;
+      font-size: 28px;
+      font-weight: 600;
+      border-radius: 16px;
+      background: var(--indigo);
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: transform 80ms ease;
+    }
+    .big-button:active { transform: scale(0.97); }
+    .big-button.paused { background: #16a34a; }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .row button {
+      padding: 18px 12px;
+      border-radius: 12px;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .row button:active { background: #222; }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .panel h2 {
+      margin: 0 0 8px 0;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+    }
+    .stat-row { display: flex; justify-content: space-between; font-size: 14px; padding: 4px 0; }
+    .stat-row .v { color: var(--text); font-variant-numeric: tabular-nums; }
+
+    .bookmarks { display: flex; flex-direction: column; gap: 6px; }
+    .bookmarks button {
+      text-align: left;
+      padding: 12px 14px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 10px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .bookmarks .empty { color: var(--muted); font-size: 13px; padding: 4px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PromptFlow</h1>
+    <div class="status" id="status">
+      <span class="dot"></span>
+      <span id="status-text">connecting…</span>
+    </div>
+  </header>
+
+  <main>
+    <button class="big-button" id="play-pause">▶ Play</button>
+
+    <div class="row">
+      <button data-action="speed-down">− Speed</button>
+      <button data-action="speed-up">+ Speed</button>
+      <button data-action="font-down">− Font</button>
+      <button data-action="font-up">+ Font</button>
+    </div>
+
+    <div class="row">
+      <button data-action="restart">⟲ Restart</button>
+      <button data-action="prev-bookmark">⟵ Prev</button>
+    </div>
+
+    <div class="panel">
+      <h2>State</h2>
+      <div class="stat-row"><span>Speed</span><span class="v" id="speed">—</span></div>
+      <div class="stat-row"><span>Font size</span><span class="v" id="font-size">—</span></div>
+    </div>
+
+    <div class="panel">
+      <h2>Bookmarks</h2>
+      <div class="bookmarks" id="bookmarks">
+        <span class="empty">No bookmarks</span>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const statusText = document.getElementById("status-text");
+    const playPause = document.getElementById("play-pause");
+    const speedEl = document.getElementById("speed");
+    const fontEl = document.getElementById("font-size");
+    const bookmarksEl = document.getElementById("bookmarks");
+
+    let ws = null;
+    let state = { isPlaying: false, scrollSpeed: 1.5, fontSize: 48, bookmarks: [] };
+
+    function setStatus(s) {
+      statusEl.className = "status " + s;
+      statusText.textContent = s;
+    }
+
+    function render() {
+      playPause.textContent = state.isPlaying ? "❚❚ Pause" : "▶ Play";
+      playPause.classList.toggle("paused", state.isPlaying);
+      speedEl.textContent = (state.scrollSpeed ?? 0).toFixed(1) + "×";
+      fontEl.textContent = (state.fontSize ?? 0) + "px";
+      const list = Array.isArray(state.bookmarks) ? state.bookmarks : [];
+      bookmarksEl.innerHTML = "";
+      if (list.length === 0) {
+        const span = document.createElement("span");
+        span.className = "empty";
+        span.textContent = "No bookmarks";
+        bookmarksEl.appendChild(span);
+      } else {
+        for (const b of list) {
+          const btn = document.createElement("button");
+          btn.textContent = b.label;
+          btn.onclick = () => send({ action: "jump", ratio: b.ratio });
+          bookmarksEl.appendChild(btn);
+        }
+      }
+    }
+
+    function send(msg) {
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+    }
+
+    function connect() {
+      setStatus("connecting");
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(proto + "://" + location.host + "/ws");
+      ws.onopen = () => setStatus("connected");
+      ws.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          state = { ...state, ...data };
+          render();
+        } catch {}
+      };
+      ws.onclose = () => {
+        setStatus("disconnected");
+        setTimeout(connect, 1500);
+      };
+      ws.onerror = () => { try { ws.close(); } catch {} };
+    }
+
+    playPause.onclick = () => send({ action: state.isPlaying ? "pause" : "play" });
+
+    document.querySelectorAll("[data-action]").forEach((btn) => {
+      btn.onclick = () => send({ action: btn.dataset.action });
+    });
+
+    connect();
+    render();
+  </script>
+</body>
+</html>

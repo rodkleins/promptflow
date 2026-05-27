@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* macOS overlay title bar: draggable region across the top */
+.titlebar-drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.titlebar-drag button,
+.titlebar-drag input,
+.titlebar-drag select,
+.titlebar-drag a {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* ---- Block-editor (Elgato-style) ---- */
+.block-editor > * {
+  background: #1a1a1a;
+  border: 1px solid #262626;
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 10px;
+  transition: border-color 120ms ease;
+}
+.block-editor > *:hover {
+  border-color: #404040;
+}
+.block-editor h1,
+.block-editor h2,
+.block-editor h3 {
+  border-left: 3px solid #6366f1;
+}
+
+/* Drag handle (provided by tiptap-extension-global-drag-handle) */
+.drag-handle {
+  position: fixed;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  border-radius: 4px;
+  background: transparent;
+  cursor: grab;
+  width: 20px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+.drag-handle::before {
+  content: "⋮⋮";
+  color: #737373;
+  font-size: 14px;
+  letter-spacing: -2px;
+  line-height: 1;
+}
+.drag-handle:hover {
+  background: #262626;
+}
+.drag-handle:hover::before {
+  color: #d4d4d4;
+}
+.drag-handle.hide {
+  opacity: 0;
+  pointer-events: none;
+}
+.drag-handle:not(.hide) {
+  opacity: 1;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
