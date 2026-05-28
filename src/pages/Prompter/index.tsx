@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, useState } from "react";
+import { PrompterTransportBar } from "../../components/PrompterTransportBar";
 import { getScript } from "../../db/client";
 import { useScroll } from "../../hooks/useScroll";
 import { dlog } from "../../lib/log";
@@ -22,7 +23,12 @@ export interface PrompterState {
   contrast: number;
   orientationDeg: number;
   isMirrored: boolean;
+  textOpacity: number;
+  autoLoop: boolean;
+  readingLinePosition: number;
+  voiceSyncActive: boolean;
   voiceFollowing: boolean;
+  voiceSilenceBehavior: "stop" | "slow";
 }
 
 // Tokenize visible DOM text into one Range per alphanumeric run, mirroring
@@ -73,7 +79,12 @@ const DEFAULT_STATE: PrompterState = {
   contrast: 100,
   orientationDeg: 0,
   isMirrored: true,
+  textOpacity: 100,
+  autoLoop: false,
+  readingLinePosition: 50,
+  voiceSyncActive: false,
   voiceFollowing: false,
+  voiceSilenceBehavior: "slow",
 };
 
 interface Props {
@@ -90,8 +101,13 @@ export function PrompterPage({ scriptId }: Props) {
   const [speakerRatio, setSpeakerRatio] = useState<number | null>(null);
   const [currentRatio, setCurrentRatio] = useState<number | null>(null);
   const [showVoiceDebug, setShowVoiceDebug] = useState(false);
+  const [chapterIndex, setChapterIndex] = useState(0);
+  const [totalChapters, setTotalChapters] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const wordRangesRef = useRef<Range[]>([]);
+  const chapterElementsRef = useRef<HTMLElement[]>([]);
+  const readingLineRef = useRef(50);
+  readingLineRef.current = state.readingLinePosition;
   // Multiplier driven by voice events (1+k·delta, smoothed).
   const activeMultiplierRef = useRef(1);
   // Envelope that fades to 0 when the speaker goes silent. Multiplied into the active one.
@@ -115,15 +131,19 @@ export function PrompterPage({ scriptId }: Props) {
     const id = setInterval(() => {
       if (lastVoiceAtRef.current === 0) return;
       const silentMs = Date.now() - lastVoiceAtRef.current;
+      // "stop" floors at 0 (pause). "slow" floors at 0.3 so the prompter keeps
+      // crawling and the speaker can see what's coming next.
+      const floor = state.voiceSilenceBehavior === "stop" ? 0 : 0.3;
       if (silentMs <= 2000) {
         silenceEnvelopeRef.current = 1;
       } else {
-        silenceEnvelopeRef.current = Math.max(0, 1 - (silentMs - 2000) / 3000);
+        const decay = Math.max(0, 1 - (silentMs - 2000) / 3000);
+        silenceEnvelopeRef.current = floor + (1 - floor) * decay;
       }
       publishMultiplier();
     }, 200);
     return () => clearInterval(id);
-  }, [state.voiceFollowing]);
+  }, [state.voiceFollowing, state.voiceSilenceBehavior]);
 
   useEffect(() => {
     (async () => {
@@ -157,7 +177,11 @@ export function PrompterPage({ scriptId }: Props) {
 
       // Position lock: gap > 10% of script → snap-scroll to the speaker.
       if (Math.abs(delta) > 0.1) {
-        const target = Math.max(0, c.scrollHeight * e.payload.ratio - c.clientHeight * 0.4);
+        // Land the speaker's position on the configured reading line, not hard-coded 40%.
+        const target = Math.max(
+          0,
+          c.scrollHeight * e.payload.ratio - c.clientHeight * (readingLineRef.current / 100),
+        );
         c.scrollTo({ top: target, behavior: "smooth" });
         activeMultiplierRef.current = 1;
         publishMultiplier();
@@ -293,6 +317,7 @@ export function PrompterPage({ scriptId }: Props) {
   useScroll(scrollContainerRef, {
     speed: effectiveSpeed,
     isPlaying: state.isPlaying && countdown == null,
+    autoLoop: state.autoLoop,
   });
 
   // Build the per-word DOM Range index after the script renders. Re-run when the
@@ -304,10 +329,62 @@ export function PrompterPage({ scriptId }: Props) {
       const c = scrollContainerRef.current;
       if (!c) return;
       wordRangesRef.current = buildWordRanges(c);
-      dlog("[voice-pacing/prompter]", "built word ranges:", wordRangesRef.current.length);
+      const chapters = Array.from(
+        c.querySelectorAll<HTMLElement>("p, h1, h2, h3, blockquote"),
+      );
+      chapterElementsRef.current = chapters;
+      setTotalChapters(chapters.length);
+      setChapterIndex(0);
+      dlog(
+        "[voice-pacing/prompter]",
+        "built word ranges:",
+        wordRangesRef.current.length,
+        "chapters:",
+        chapters.length,
+      );
     });
     return () => cancelAnimationFrame(id);
   }, [script?.id]);
+
+  // Track which chapter the reading line is on as the user/voice scrolls.
+  useEffect(() => {
+    const c = scrollContainerRef.current;
+    if (!c || totalChapters === 0) return;
+    const onScroll = () => {
+      const els = chapterElementsRef.current;
+      const containerRect = c.getBoundingClientRect();
+      const readingY = containerRect.top + c.clientHeight * (state.readingLinePosition / 100);
+      let idx = 0;
+      for (let i = 0; i < els.length; i++) {
+        const r = els[i].getBoundingClientRect();
+        if (r.top <= readingY) idx = i;
+        else break;
+      }
+      setChapterIndex(idx);
+    };
+    c.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => c.removeEventListener("scroll", onScroll);
+  }, [totalChapters]);
+
+  // Mirror the current chapter back to the editor so it can highlight the
+  // matching paragraph card in the script list.
+  useEffect(() => {
+    if (totalChapters === 0) return;
+    emit("prompter:chapter", { index: chapterIndex }).catch(() => undefined);
+  }, [chapterIndex, totalChapters]);
+
+  function scrollToChapter(i: number) {
+    const els = chapterElementsRef.current;
+    const c = scrollContainerRef.current;
+    if (!c || i < 0 || i >= els.length) return;
+    const containerRect = c.getBoundingClientRect();
+    const targetRect = els[i].getBoundingClientRect();
+    const targetTop = targetRect.top - containerRect.top + c.scrollTop - c.clientHeight * (state.readingLinePosition / 100);
+    c.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+  }
+  const onPrevChapter = () => scrollToChapter(Math.max(0, chapterIndex - 1));
+  const onNextChapter = () => scrollToChapter(Math.min(totalChapters - 1, chapterIndex + 1));
 
   // Clear highlight when voice-following turns off so a stale word doesn't linger.
   useEffect(() => {
@@ -344,7 +421,7 @@ export function PrompterPage({ scriptId }: Props) {
       editable: false,
       editorProps: {
         attributes: {
-          class: "prose prose-invert max-w-none focus:outline-none",
+          class: "prose prose-invert max-w-none focus:outline-none prompter-text",
         },
       },
     },
@@ -392,19 +469,23 @@ export function PrompterPage({ scriptId }: Props) {
           transform,
           transformOrigin: "center center",
           // Fade text above the reading line so the eye lands on the active line.
-          maskImage:
-            "linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.35) 25%, rgba(0,0,0,1) 50%, rgba(0,0,0,1) 100%)",
-          WebkitMaskImage:
-            "linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.35) 25%, rgba(0,0,0,1) 50%, rgba(0,0,0,1) 100%)",
+          // The mid-stop sits at the configured reading-line position.
+          maskImage: `linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.35) ${state.readingLinePosition / 2}%, rgba(0,0,0,1) ${state.readingLinePosition}%, rgba(0,0,0,1) 100%)`,
+          WebkitMaskImage: `linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.35) ${state.readingLinePosition / 2}%, rgba(0,0,0,1) ${state.readingLinePosition}%, rgba(0,0,0,1) 100%)`,
         }}
       >
-        <EditorContent editor={editor} />
+        <div style={{ opacity: state.textOpacity / 100 }}>
+          <EditorContent editor={editor} />
+        </div>
       </div>
 
-      {/* Center reading line */}
+      {/* Reading line — position is configurable via Settings */}
       <div
-        className="pointer-events-none absolute top-1/2 right-0 left-0 h-px"
-        style={{ backgroundColor: `${state.textColor}33` }}
+        className="pointer-events-none absolute right-0 left-0 h-px"
+        style={{
+          top: `${state.readingLinePosition}%`,
+          backgroundColor: `${state.textColor}33`,
+        }}
       />
 
       {countdown != null && (
@@ -470,23 +551,19 @@ export function PrompterPage({ scriptId }: Props) {
         </button>
       </div>
 
-      {/* Floating transport hint */}
-      {showControls && (
-        <div
-          className="absolute right-6 bottom-6 flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-xs text-white/80 backdrop-blur"
-          style={{ transform: counterTransform }}
-        >
-          <span>
-            <kbd className="rounded bg-white/10 px-1.5 py-0.5">Space</kbd> play/pause
-          </span>
-          <span>
-            <kbd className="rounded bg-white/10 px-1.5 py-0.5">↑/↓</kbd> speed
-          </span>
-          <span>
-            <kbd className="rounded bg-white/10 px-1.5 py-0.5">Esc</kbd> close
-          </span>
-        </div>
-      )}
+      {/* Persistent transport bar (Elgato-style) */}
+      <PrompterTransportBar
+        isPlaying={state.isPlaying}
+        voiceFollowing={state.voiceFollowing}
+        voiceSyncActive={state.voiceSyncActive}
+        showControls={showControls}
+        currentChapter={totalChapters === 0 ? 0 : chapterIndex + 1}
+        totalChapters={totalChapters}
+        fontSize={state.fontSize}
+        counterTransform={counterTransform}
+        onPrevChapter={onPrevChapter}
+        onNextChapter={onNextChapter}
+      />
     </div>
   );
 }

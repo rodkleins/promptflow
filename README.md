@@ -36,6 +36,7 @@ Built with Tauri 2, React, and SQLite. ~20 MB binary, ~2 s cold start.
 - SQLite (`tauri-plugin-sql`) with migration runner — schema versioned
 - Settings (font, colors, margins, line spacing, etc.) persist across launches
 - All data lives in the OS app-data directory; nothing leaves the machine
+- See [STORAGE.md](STORAGE.md) for exact paths, table schemas, settings keys, and backup/reset commands
 
 ### Keyboard shortcuts
 Global — active even when the prompter window has focus:

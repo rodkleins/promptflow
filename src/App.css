@@ -22,21 +22,56 @@
 }
 
 /* ---- Block-editor (Elgato-style) ---- */
+.block-editor {
+  counter-reset: chapter;
+}
 .block-editor > * {
+  position: relative;
   background: #1a1a1a;
   border: 1px solid #262626;
   border-radius: 8px;
-  padding: 14px 18px;
+  padding: 14px 18px 14px 36px;
   margin-bottom: 10px;
-  transition: border-color 120ms ease;
+  transition: border-color 120ms ease, background-color 120ms ease;
+  counter-increment: chapter;
+  overflow: hidden;
 }
-.block-editor > *:hover {
-  border-color: #404040;
+/* Left accent bar with chapter number — replaces the circular badge */
+.block-editor > *::before {
+  content: counter(chapter);
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: #525252;
+  background: #0f0f0f;
+  border-right: 1px solid #262626;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.block-editor > *:hover::before {
+  color: #a5b4fc;
+  background: #1f1f2e;
+}
+.block-editor > *.chapter-active {
+  border-color: #4f46e5;
+  background: #1e1b3a;
+}
+.block-editor > *.chapter-active::before {
+  background: linear-gradient(180deg, #6366f1, #4f46e5);
+  color: #ffffff;
+  border-right-color: #6366f1;
 }
 .block-editor h1,
 .block-editor h2,
 .block-editor h3 {
-  border-left: 3px solid #6366f1;
+  /* keep the headings a bit emphasized — second visual cue without conflicting with the bar */
+  font-weight: 700;
 }
 
 /* Drag handle (provided by tiptap-extension-global-drag-handle) */
@@ -78,9 +113,43 @@
   cursor: grabbing;
 }
 
+/* Official Tiptap v3 drag handle (React) — visual style of the inner glyph */
+.drag-handle-react {
+  cursor: grab;
+  color: #525252;
+  font-size: 14px;
+  letter-spacing: -2px;
+  width: 18px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: transparent;
+  transition: background 120ms ease, color 120ms ease;
+}
+.drag-handle-react:hover {
+  background: #262626;
+  color: #d4d4d4;
+}
+.drag-handle-react:active {
+  cursor: grabbing;
+}
+
 /* ---- Voice-sync word highlight (prompter) ---- */
 ::highlight(voice-cursor) {
   background-color: rgba(99, 102, 241, 0.45);
   color: inherit;
   border-radius: 4px;
+}
+
+/* ---- Prompter paragraph spacing ----
+   Adds a blank line of breathing room between top-level blocks so paragraphs
+   read as separate units when scrolling, matching the visual gap between
+   cards in the editor. */
+.prompter-text > * {
+  margin-bottom: 1.4em;
+}
+.prompter-text > *:last-child {
+  margin-bottom: 0;
 }

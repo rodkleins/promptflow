@@ -10,14 +10,14 @@ function isTypingTarget(el: EventTarget | null): boolean {
 }
 
 export function useShortcuts() {
-  const prompterOpen = usePrompter((s) => s.prompterOpen);
   const { closePrompter, restart } = usePrompterBridge();
+  const prompterOpen = usePrompter((s) => s.prompterOpen);
 
   useEffect(() => {
-    if (!prompterOpen) return;
-
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
+      // Escape only does something when the prompter window is open.
+      if (e.key === "Escape" && !prompterOpen) return;
 
       const cur = usePrompter.getState();
       switch (e.key) {

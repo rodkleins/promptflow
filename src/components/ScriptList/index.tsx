@@ -76,22 +76,37 @@ export function ScriptList() {
   }
 
   const renderScript = (s: Script) => (
-    <button
-      type="button"
+    <div
       key={s.id}
-      onClick={() => setActiveScriptId(s.id)}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        handleDeleteScript(s);
-      }}
-      className={`block w-full truncate rounded px-2 py-1 text-left text-sm ${
-        activeScriptId === s.id
-          ? "bg-indigo-600/40 text-white"
-          : "text-neutral-300 hover:bg-neutral-800"
+      className={`group flex items-center rounded ${
+        activeScriptId === s.id ? "bg-indigo-600/40" : "hover:bg-neutral-800"
       }`}
     >
-      {s.title}
-    </button>
+      <button
+        type="button"
+        onClick={() => setActiveScriptId(s.id)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          handleDeleteScript(s);
+        }}
+        className={`flex-1 truncate px-2 py-1 text-left text-sm ${
+          activeScriptId === s.id ? "text-white" : "text-neutral-300"
+        }`}
+      >
+        {s.title}
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleDeleteScript(s);
+        }}
+        title="Delete script"
+        className="mr-1 hidden h-6 w-6 items-center justify-center rounded text-neutral-500 group-hover:flex hover:bg-red-900/40 hover:text-red-400"
+      >
+        ×
+      </button>
+    </div>
   );
 
   return (

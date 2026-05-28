@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { readFile, readTextFile } from "@tauri-apps/plugin-fs";
 import mammoth from "mammoth";
+import { marked } from "marked";
 
 export function plainTextToTiptapJson(text: string): string {
   // Split on one-or-more blank lines (paragraph breaks). Inside each block,
@@ -49,6 +50,21 @@ export async function importTxt(): Promise<ImportResult | null> {
   return {
     title: basename(path),
     content: plainTextToTiptapJson(text),
+  };
+}
+
+export async function importMarkdown(): Promise<ImportResult | null> {
+  const path = await open({
+    title: "Import Markdown",
+    multiple: false,
+    filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
+  });
+  if (!path || typeof path !== "string") return null;
+  const text = await readTextFile(path);
+  const html = await marked.parse(text, { gfm: true, breaks: false });
+  return {
+    title: basename(path),
+    content: htmlToTiptapJson(html),
   };
 }
 

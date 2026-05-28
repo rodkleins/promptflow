@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { useEffect, useRef, useState } from "react";
 import { Bookmarks } from "../../components/Bookmarks";
@@ -37,10 +38,35 @@ export function EditorPage() {
   useShortcuts();
   useVoicePacing();
 
+  // Reflect the prompter's currently-read chapter on the matching paragraph
+  // card in the script list (block-editor children).
+  useEffect(() => {
+    const promise = listen<{ index: number }>("prompter:chapter", (e) => {
+      document
+        .querySelectorAll(".block-editor > .chapter-active")
+        .forEach((el) => el.classList.remove("chapter-active"));
+      const blockEditor = document.querySelector(".block-editor");
+      const target = blockEditor?.children[e.payload.index];
+      target?.classList.add("chapter-active");
+    });
+    return () => {
+      promise.then((f) => f()).catch(() => undefined);
+    };
+  }, []);
+
+  // Clear the active chapter highlight whenever the prompter window closes.
+  const prompterOpen = usePrompter((s) => s.prompterOpen);
+  useEffect(() => {
+    if (prompterOpen) return;
+    document
+      .querySelectorAll(".block-editor > .chapter-active")
+      .forEach((el) => el.classList.remove("chapter-active"));
+  }, [prompterOpen]);
+
   // Keyboard shortcuts sent from the prompter window arrive as prompter:cmd
   // events. Apply them to the store; the bridge re-broadcasts state back.
   useEffect(() => {
-    const promise = listen<{ action: string }>("prompter:cmd", (e) => {
+    const promise = listen<{ action: string; value?: number }>("prompter:cmd", async (e) => {
       const s = usePrompter.getState();
       switch (e.payload.action) {
         case "toggle-play":
@@ -53,8 +79,35 @@ export function EditorPage() {
         case "speed-down":
           s.setSpeed(Math.max(0.5, s.scrollSpeed - 0.1));
           break;
+        case "font-up":
+          s.setFontSize(Math.min(120, s.fontSize + 2));
+          break;
+        case "font-down":
+          s.setFontSize(Math.max(24, s.fontSize - 2));
+          break;
+        case "set-font":
+          if (typeof e.payload.value === "number") {
+            s.setFontSize(Math.max(24, Math.min(120, e.payload.value)));
+          }
+          break;
         case "restart":
           emit("prompter:restart").catch(() => undefined);
+          break;
+        case "toggle-voice":
+          try {
+            if (s.voiceSyncActive) {
+              await invoke("stop_voice_sync");
+              s.setVoiceSyncActive(false);
+            } else {
+              await invoke("start_voice_sync", {
+                language: s.voiceSyncLanguage,
+                model: s.voiceSyncModel,
+              });
+              s.setVoiceSyncActive(true);
+            }
+          } catch (err) {
+            console.warn("toggle-voice failed", err);
+          }
           break;
       }
     });
@@ -118,6 +171,7 @@ export function EditorPage() {
       />
       <div className="flex flex-1 overflow-hidden">
         <ScriptList />
+        {settingsOpen && <SettingsPanel />}
         <section className="flex flex-1 flex-col overflow-hidden">
           {script && draft ? (
             <>
@@ -166,7 +220,6 @@ export function EditorPage() {
                     getCurrentOffset={() => cursorOffsetRef.current}
                   />
                 )}
-                {settingsOpen && <SettingsPanel />}
               </div>
             </>
           ) : (
