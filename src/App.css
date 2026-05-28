@@ -142,3 +142,14 @@
   color: inherit;
   border-radius: 4px;
 }
+
+/* ---- Prompter paragraph spacing ----
+   Adds a blank line of breathing room between top-level blocks so paragraphs
+   read as separate units when scrolling, matching the visual gap between
+   cards in the editor. */
+.prompter-text > * {
+  margin-bottom: 1.4em;
+}
+.prompter-text > *:last-child {
+  margin-bottom: 0;
+}

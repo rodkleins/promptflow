@@ -421,7 +421,7 @@ export function PrompterPage({ scriptId }: Props) {
       editable: false,
       editorProps: {
         attributes: {
-          class: "prose prose-invert max-w-none focus:outline-none",
+          class: "prose prose-invert max-w-none focus:outline-none prompter-text",
         },
       },
     },
