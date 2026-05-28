@@ -1,3 +1,4 @@
+import DragHandle from "@tiptap/extension-drag-handle-react";
 import { type Content, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect } from "react";
@@ -77,6 +78,7 @@ export function RichEditor({ scriptId, initialContent, onChange }: Props) {
     }
   }, [editor, initialContent]);
 
+
   if (!editor) return null;
 
   const btn = (active: boolean) =>
@@ -125,8 +127,19 @@ export function RichEditor({ scriptId, initialContent, onChange }: Props) {
           • List
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="relative flex-1 overflow-y-auto">
         <EditorContent editor={editor} className="h-full" />
+        <DragHandle
+          editor={editor}
+          onElementDragStart={(e) => {
+            // Tiptap's drag-handle plugin never sets effectAllowed, so the browser
+            // defaults the drop to "copy" and ProseMirror leaves the source in place.
+            // Forcing "move" here makes the drop actually relocate the block.
+            if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+          }}
+        >
+          <div className="drag-handle-react">⋮⋮</div>
+        </DragHandle>
       </div>
     </div>
   );

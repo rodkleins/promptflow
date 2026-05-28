@@ -20,5 +20,11 @@ pub fn migrations() -> Vec<Migration> {
             sql: include_str!("migrations/003_voice_sync.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 4,
+            description: "elgato layout settings",
+            sql: include_str!("migrations/004_layout_settings.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }

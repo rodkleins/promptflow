@@ -20,6 +20,13 @@ const SETTING_KEYS: Record<keyof PrompterSettings, string> = {
   isMirrored: "mirror_horizontal",
   scrollSpeed: "scroll_speed",
   countdownSeconds: "countdown_seconds",
+  textOpacity: "text_opacity",
+  autoLoop: "auto_loop",
+  readingLinePosition: "reading_line_position",
+  voiceSyncLanguage: "voice_sync_language",
+  voiceSyncModel: "voice_sync_model",
+  voiceFollow: "voice_follow",
+  voiceSilenceBehavior: "voice_silence_behavior",
 };
 
 function parseValue<K extends keyof PrompterSettings>(

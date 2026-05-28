@@ -24,6 +24,8 @@ export function VoiceSyncPanel() {
   const setLanguage = usePrompter((s) => s.setVoiceSyncLanguage);
   const voiceFollow = usePrompter((s) => s.voiceFollow);
   const setVoiceFollow = usePrompter((s) => s.setVoiceFollow);
+  const silenceBehavior = usePrompter((s) => s.voiceSilenceBehavior);
+  const applySettings = usePrompter((s) => s.applySettings);
 
   const {
     active,
@@ -125,6 +127,24 @@ export function VoiceSyncPanel() {
             onChange={(e) => setVoiceFollow(e.target.checked)}
             className="accent-indigo-500"
           />
+        </label>
+      )}
+
+      {downloaded && (
+        <label className="block">
+          <span className="text-xs text-neutral-400">On silence</span>
+          <select
+            value={silenceBehavior}
+            onChange={(e) =>
+              applySettings({
+                voiceSilenceBehavior: e.target.value as "stop" | "slow",
+              })
+            }
+            className="mt-1 w-full rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-sm text-neutral-200"
+          >
+            <option value="slow">Slow down (keep crawling)</option>
+            <option value="stop">Stop (full pause)</option>
+          </select>
         </label>
       )}
 

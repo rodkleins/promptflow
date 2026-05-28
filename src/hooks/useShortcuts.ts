@@ -10,14 +10,14 @@ function isTypingTarget(el: EventTarget | null): boolean {
 }
 
 export function useShortcuts() {
-  const prompterOpen = usePrompter((s) => s.prompterOpen);
   const { closePrompter, restart } = usePrompterBridge();
+  const prompterOpen = usePrompter((s) => s.prompterOpen);
 
   useEffect(() => {
-    if (!prompterOpen) return;
-
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
+      // Escape only does something when the prompter window is open.
+      if (e.key === "Escape" && !prompterOpen) return;
 
       const cur = usePrompter.getState();
       switch (e.key) {
@@ -32,7 +32,7 @@ export function useShortcuts() {
           break;
         case "ArrowDown":
           e.preventDefault();
-          cur.setSpeed(Math.max(0.5, cur.scrollSpeed - 0.1));
+          cur.setSpeed(Math.max(1, cur.scrollSpeed - 0.1));
           break;
         case "+":
         case "=":

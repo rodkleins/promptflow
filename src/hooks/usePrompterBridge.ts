@@ -18,8 +18,12 @@ const BROADCAST_FIELDS: (keyof PrompterSettings | "isPlaying" | "voiceSyncActive
   "contrast",
   "orientationDeg",
   "isMirrored",
+  "textOpacity",
+  "autoLoop",
+  "readingLinePosition",
   "voiceSyncActive",
   "voiceFollow",
+  "voiceSilenceBehavior",
 ];
 
 function collectState() {
@@ -38,7 +42,13 @@ function collectState() {
     contrast: s.contrast,
     orientationDeg: s.orientationDeg,
     isMirrored: s.isMirrored,
+    textOpacity: s.textOpacity,
+    autoLoop: s.autoLoop,
+    readingLinePosition: s.readingLinePosition,
+    voiceSyncActive: s.voiceSyncActive,
+    voiceFollow: s.voiceFollow,
     voiceFollowing: s.voiceSyncActive && s.voiceFollow,
+    voiceSilenceBehavior: s.voiceSilenceBehavior,
   };
 }
 

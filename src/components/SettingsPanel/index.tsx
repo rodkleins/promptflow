@@ -75,7 +75,7 @@ export function SettingsPanel() {
   const apply = s.applySettings;
 
   return (
-    <aside className="flex h-full w-72 flex-col overflow-y-auto border-l border-neutral-800 bg-neutral-900">
+    <aside className="flex h-full w-72 flex-col overflow-y-auto border-r border-neutral-800 bg-neutral-900">
       <div className="border-b border-neutral-800 px-3 py-2">
         <h2 className="text-xs font-semibold tracking-wide text-neutral-400 uppercase">
           Settings
@@ -175,6 +175,22 @@ export function SettingsPanel() {
           unit="%"
           onChange={(v) => apply({ lineSpacing: v })}
         />
+        <Slider
+          label="Text opacity"
+          value={s.textOpacity}
+          min={10}
+          max={100}
+          unit="%"
+          onChange={(v) => apply({ textOpacity: v })}
+        />
+        <Slider
+          label="Reading line"
+          value={s.readingLinePosition}
+          min={10}
+          max={90}
+          unit="% from top"
+          onChange={(v) => apply({ readingLinePosition: v })}
+        />
 
         <div className="flex gap-2">
           <label className="flex-1">
@@ -202,7 +218,7 @@ export function SettingsPanel() {
         <Slider
           label="Scroll speed"
           value={s.scrollSpeed}
-          min={0.5}
+          min={1}
           max={5}
           step={0.1}
           unit="×"
@@ -216,6 +232,15 @@ export function SettingsPanel() {
           unit="s"
           onChange={(v) => apply({ countdownSeconds: v })}
         />
+        <label className="flex items-center justify-between text-xs text-neutral-400">
+          <span>Auto-loop (restart at end)</span>
+          <input
+            type="checkbox"
+            checked={s.autoLoop}
+            onChange={(e) => apply({ autoLoop: e.target.checked })}
+            className="accent-indigo-500"
+          />
+        </label>
       </Section>
 
       <Section title="Voice Sync">

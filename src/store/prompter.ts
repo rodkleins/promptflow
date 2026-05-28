@@ -15,6 +15,13 @@ export interface PrompterSettings {
   isMirrored: boolean;
   scrollSpeed: number;
   countdownSeconds: number;
+  textOpacity: number; // % (0-100), applied to the rendered script text only
+  autoLoop: boolean;
+  readingLinePosition: number; // % from top of the prompter where the reading line sits
+  voiceSyncLanguage: string;
+  voiceSyncModel: string;
+  voiceFollow: boolean;
+  voiceSilenceBehavior: "stop" | "slow"; // what the prompter does after sustained silence
 }
 
 interface PrompterState extends PrompterSettings {
@@ -28,9 +35,6 @@ interface PrompterState extends PrompterSettings {
   targetDisplayId: number | null;
 
   voiceSyncActive: boolean;
-  voiceSyncLanguage: string;
-  voiceSyncModel: string;
-  voiceFollow: boolean;
   setVoiceSyncActive: (active: boolean) => void;
   setVoiceSyncLanguage: (language: string) => void;
   setVoiceSyncModel: (model: string) => void;
@@ -72,6 +76,13 @@ export const DEFAULT_SETTINGS: PrompterSettings = {
   isMirrored: true,
   scrollSpeed: 1.5,
   countdownSeconds: 3,
+  textOpacity: 100,
+  autoLoop: false,
+  readingLinePosition: 50,
+  voiceSyncLanguage: "pt",
+  voiceSyncModel: "tiny",
+  voiceFollow: true,
+  voiceSilenceBehavior: "slow",
 };
 
 export const usePrompter = create<PrompterState>((set) => ({
@@ -87,9 +98,6 @@ export const usePrompter = create<PrompterState>((set) => ({
   targetDisplayId: null,
 
   voiceSyncActive: false,
-  voiceSyncLanguage: "pt",
-  voiceSyncModel: "tiny",
-  voiceFollow: true,
   setVoiceSyncActive: (voiceSyncActive) => set({ voiceSyncActive }),
   setVoiceSyncLanguage: (voiceSyncLanguage) => set({ voiceSyncLanguage }),
   setVoiceSyncModel: (voiceSyncModel) => set({ voiceSyncModel }),
