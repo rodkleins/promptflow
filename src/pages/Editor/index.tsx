@@ -77,7 +77,7 @@ export function EditorPage() {
           s.setSpeed(Math.min(5, s.scrollSpeed + 0.1));
           break;
         case "speed-down":
-          s.setSpeed(Math.max(1, s.scrollSpeed - 0.1));
+          s.setSpeed(Math.max(0.5, s.scrollSpeed - 0.1));
           break;
         case "font-up":
           s.setFontSize(Math.min(120, s.fontSize + 2));

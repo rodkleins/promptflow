@@ -32,7 +32,7 @@ export function useShortcuts() {
           break;
         case "ArrowDown":
           e.preventDefault();
-          cur.setSpeed(Math.max(1, cur.scrollSpeed - 0.1));
+          cur.setSpeed(Math.max(0.5, cur.scrollSpeed - 0.1));
           break;
         case "+":
         case "=":

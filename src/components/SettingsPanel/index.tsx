@@ -218,7 +218,7 @@ export function SettingsPanel() {
         <Slider
           label="Scroll speed"
           value={s.scrollSpeed}
-          min={1}
+          min={0.5}
           max={5}
           step={0.1}
           unit="×"
