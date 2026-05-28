@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createScript } from "../../db/client";
 import { exportAsDocx, exportAsTxt } from "../../lib/exporters";
-import { importDocx, importTxt } from "../../lib/importers";
+import { importDocx, importMarkdown, importTxt } from "../../lib/importers";
 import { usePrompter } from "../../store/prompter";
 
 interface Props {
@@ -25,10 +25,15 @@ export function ImportExportMenu({ scriptId, title, contentJson }: Props) {
     return () => document.removeEventListener("mousedown", onClick);
   }, [open]);
 
-  async function runImport(kind: "txt" | "docx") {
+  async function runImport(kind: "txt" | "md" | "docx") {
     setOpen(false);
     try {
-      const result = kind === "txt" ? await importTxt() : await importDocx();
+      const result =
+        kind === "txt"
+          ? await importTxt()
+          : kind === "md"
+            ? await importMarkdown()
+            : await importDocx();
       if (!result) return;
       const script = await createScript(result.title, null);
       // Replace empty default content with the imported content.
@@ -74,6 +79,13 @@ export function ImportExportMenu({ scriptId, title, contentJson }: Props) {
             className="block w-full px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
           >
             From TXT…
+          </button>
+          <button
+            type="button"
+            onClick={() => runImport("md")}
+            className="block w-full px-3 py-1 text-left text-neutral-200 hover:bg-neutral-800"
+          >
+            From Markdown…
           </button>
           <button
             type="button"
