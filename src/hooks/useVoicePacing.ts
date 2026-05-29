@@ -37,9 +37,44 @@ const NOISE_TOKENS = new Set([
   "noise",
   "blank_audio",
 ]);
+
+// Phrases whisper famously hallucinates on silence/background noise. Matched
+// against the joined tokenized transcript (lowercase, accent-stripped, single-
+// spaced). Add new ones as they show up in `Live transcript`.
+const HALLUCINATION_PHRASES = new Set([
+  // pt-BR
+  "muito bom",
+  "muito obrigado",
+  "muito obrigada",
+  "obrigado",
+  "obrigada",
+  "tchau",
+  "bom dia",
+  "boa tarde",
+  "boa noite",
+  "vamos la",
+  "ate logo",
+  "ate mais",
+  "mais ou menos",
+  "para mais informacoes acesse www globo com",
+  "inscreva se no canal",
+  "deixa o like",
+  "compartilhe o video",
+  // en
+  "thanks for watching",
+  "thank you for watching",
+  "please subscribe",
+  "subscribe",
+  "like and subscribe",
+  "see you next time",
+  "bye bye",
+]);
+
 function isNoise(words: string[]): boolean {
   if (words.length === 0) return true;
-  return words.every((w) => NOISE_TOKENS.has(w));
+  if (words.every((w) => NOISE_TOKENS.has(w))) return true;
+  if (HALLUCINATION_PHRASES.has(words.join(" "))) return true;
+  return false;
 }
 
 const WINDOW_BEHIND = 10;
@@ -81,7 +116,15 @@ function bestMatch(
       if (r > runHere) runHere = r;
     }
     if (runHere > bestRunSeen) bestRunSeen = runHere;
-    if (runHere < MIN_RUN) continue;
+    // Distance-scaled minimum run length: a match that's far ahead of the
+    // cursor must be more compelling (longer consecutive run) to be accepted,
+    // so coincidental short matches on common filler words ("para o", "e o",
+    // "que a") can't drag the cursor across the script. With divisor=15:
+    //   run=2 → 0-14 words ahead, run=3 → 0-29, run=4 → 0-44, etc.
+    // Behind-cursor matches use the base MIN_RUN.
+    const aheadDist = Math.max(0, p - cursor);
+    const requiredRun = MIN_RUN + Math.floor(aheadDist / 15);
+    if (runHere < requiredRun) continue;
     const distance = Math.abs(p - cursor);
     if (runHere > bestRun || (runHere === bestRun && distance < bestDistance)) {
       bestRun = runHere;

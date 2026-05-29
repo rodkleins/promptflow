@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bookmarks } from "../../components/Bookmarks";
 import { ControlBar } from "../../components/ControlBar";
 import { ImportExportMenu } from "../../components/ImportExportMenu";
+import { PrompterTransportBar } from "../../components/PrompterTransportBar";
 import { RichEditor, type RichEditorChange } from "../../components/RichEditor";
 import { ScriptList } from "../../components/ScriptList";
 import { SettingsPanel } from "../../components/SettingsPanel";
@@ -31,6 +32,8 @@ export function EditorPage() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(true);
+  const [chapterIndex, setChapterIndex] = useState(0);
+  const [totalChapters, setTotalChapters] = useState(0);
   const cursorOffsetRef = useRef(0);
   const docLengthRef = useRef(1);
 
@@ -41,13 +44,15 @@ export function EditorPage() {
   // Reflect the prompter's currently-read chapter on the matching paragraph
   // card in the script list (block-editor children).
   useEffect(() => {
-    const promise = listen<{ index: number }>("prompter:chapter", (e) => {
+    const promise = listen<{ index: number; total?: number }>("prompter:chapter", (e) => {
       document
         .querySelectorAll(".block-editor > .chapter-active")
         .forEach((el) => el.classList.remove("chapter-active"));
       const blockEditor = document.querySelector(".block-editor");
       const target = blockEditor?.children[e.payload.index];
       target?.classList.add("chapter-active");
+      setChapterIndex(e.payload.index);
+      if (typeof e.payload.total === "number") setTotalChapters(e.payload.total);
     });
     return () => {
       promise.then((f) => f()).catch(() => undefined);
@@ -56,11 +61,17 @@ export function EditorPage() {
 
   // Clear the active chapter highlight whenever the prompter window closes.
   const prompterOpen = usePrompter((s) => s.prompterOpen);
+  const isPlaying = usePrompter((s) => s.isPlaying);
+  const fontSize = usePrompter((s) => s.fontSize);
+  const voiceSyncActive = usePrompter((s) => s.voiceSyncActive);
+  const voiceFollow = usePrompter((s) => s.voiceFollow);
   useEffect(() => {
     if (prompterOpen) return;
     document
       .querySelectorAll(".block-editor > .chapter-active")
       .forEach((el) => el.classList.remove("chapter-active"));
+    setChapterIndex(0);
+    setTotalChapters(0);
   }, [prompterOpen]);
 
   // Keyboard shortcuts sent from the prompter window arrive as prompter:cmd
@@ -221,6 +232,24 @@ export function EditorPage() {
                   />
                 )}
               </div>
+              {prompterOpen && (
+                <PrompterTransportBar
+                  isPlaying={isPlaying}
+                  voiceFollowing={voiceSyncActive && voiceFollow}
+                  voiceSyncActive={voiceSyncActive}
+                  showControls={true}
+                  currentChapter={totalChapters === 0 ? 0 : chapterIndex + 1}
+                  totalChapters={totalChapters}
+                  fontSize={fontSize}
+                  containerClassName="flex shrink-0 justify-center border-t border-neutral-800 bg-neutral-900 px-4 py-3"
+                  onPrevChapter={() =>
+                    emit("prompter:chapter-cmd", { direction: "prev" }).catch(() => undefined)
+                  }
+                  onNextChapter={() =>
+                    emit("prompter:chapter-cmd", { direction: "next" }).catch(() => undefined)
+                  }
+                />
+              )}
             </>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 text-neutral-500">

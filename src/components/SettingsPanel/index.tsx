@@ -1,4 +1,5 @@
 import { type ReactNode, useState } from "react";
+import pkg from "../../../package.json";
 import { usePrompter } from "../../store/prompter";
 import { RemotePanel } from "../RemotePanel";
 import { VoiceSyncPanel } from "../VoiceSyncPanel";
@@ -250,6 +251,10 @@ export function SettingsPanel() {
       <Section title="Remote">
         <RemotePanel />
       </Section>
+
+      <div className="mt-4 border-t border-neutral-800 pt-3 text-center text-[10px] text-neutral-600">
+        PromptFlow v{pkg.version}
+      </div>
     </aside>
   );
 }

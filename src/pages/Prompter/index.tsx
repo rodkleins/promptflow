@@ -100,7 +100,7 @@ export function PrompterPage({ scriptId }: Props) {
   const [lastDelta, setLastDelta] = useState<number | null>(null);
   const [speakerRatio, setSpeakerRatio] = useState<number | null>(null);
   const [currentRatio, setCurrentRatio] = useState<number | null>(null);
-  const [showVoiceDebug, setShowVoiceDebug] = useState(false);
+  const [showVoiceDebug, setShowVoiceDebug] = useState(true);
   const [chapterIndex, setChapterIndex] = useState(0);
   const [totalChapters, setTotalChapters] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -110,16 +110,37 @@ export function PrompterPage({ scriptId }: Props) {
   readingLineRef.current = state.readingLinePosition;
   // Multiplier driven by voice events (1+k·delta, smoothed).
   const activeMultiplierRef = useRef(1);
-  // Envelope that fades to 0 when the speaker goes silent. Multiplied into the active one.
+  // Blend ratio: 1 = trust active voice multiplier, 0 = trust the silence floor.
+  // Decays from 1 → 0 over the silence ramp so the prompter cleanly hands control
+  // from voice tracking to the configured silence behavior.
   const silenceEnvelopeRef = useRef(1);
+  const silenceFloorRef = useRef(state.voiceSilenceBehavior === "stop" ? 0 : 0.3);
   const lastVoiceAtRef = useRef(0);
 
+  // Keep the silence floor ref aligned with the current silence behavior so both
+  // the silence detector and the voice-pos listener (registered once with []) see
+  // the up-to-date floor when they call publishMultiplier.
+  useEffect(() => {
+    silenceFloorRef.current = state.voiceSilenceBehavior === "stop" ? 0 : 0.3;
+  }, [state.voiceSilenceBehavior]);
+
   function publishMultiplier() {
-    const m = activeMultiplierRef.current * silenceEnvelopeRef.current;
-    setVoiceMultiplier(m);
+    const active = activeMultiplierRef.current;
+    const env = silenceEnvelopeRef.current;
+    const floor = silenceFloorRef.current;
+    // Lerp between fresh-voice tracking (env=1 → active) and sustained silence
+    // (env=0 → floor), then clamp at the floor. The clamp is what makes "slow"
+    // mode actually keep crawling: active can hit 0 mid-sentence when the
+    // speaker reads slower than the prompter, and without the floor the
+    // prompter would pause even though we're not silent. In "stop" mode floor=0
+    // so the clamp is a no-op and pausing still works as expected.
+    const m = env * active + (1 - env) * floor;
+    setVoiceMultiplier(Math.max(floor, m));
   }
 
-  // Silence detector: fade out the envelope after 2 s of no voice events, over 3 s.
+  // Silence detector: decay the envelope toward 0 after 2 s of no voice events,
+  // over 3 s. The actual silence floor is applied by publishMultiplier via the
+  // env↔floor lerp, so envelope semantics stay independent of the mode.
   useEffect(() => {
     if (!state.voiceFollowing) {
       activeMultiplierRef.current = 1;
@@ -131,14 +152,10 @@ export function PrompterPage({ scriptId }: Props) {
     const id = setInterval(() => {
       if (lastVoiceAtRef.current === 0) return;
       const silentMs = Date.now() - lastVoiceAtRef.current;
-      // "stop" floors at 0 (pause). "slow" floors at 0.3 so the prompter keeps
-      // crawling and the speaker can see what's coming next.
-      const floor = state.voiceSilenceBehavior === "stop" ? 0 : 0.3;
       if (silentMs <= 2000) {
         silenceEnvelopeRef.current = 1;
       } else {
-        const decay = Math.max(0, 1 - (silentMs - 2000) / 3000);
-        silenceEnvelopeRef.current = floor + (1 - floor) * decay;
+        silenceEnvelopeRef.current = Math.max(0, 1 - (silentMs - 2000) / 3000);
       }
       publishMultiplier();
     }, 200);
@@ -234,6 +251,13 @@ export function PrompterPage({ scriptId }: Props) {
     const unlistenClose = listen("prompter:close", () => {
       getCurrentWindow().close();
     });
+    const unlistenChapterCmd = listen<{ direction: "prev" | "next" }>(
+      "prompter:chapter-cmd",
+      (e) => {
+        if (e.payload.direction === "prev") onPrevChapterRef.current();
+        else onNextChapterRef.current();
+      },
+    );
     return () => {
       unlistenState.then((f) => f());
       unlistenJump.then((f) => f());
@@ -241,6 +265,7 @@ export function PrompterPage({ scriptId }: Props) {
       unlistenRestart.then((f) => f());
       unlistenCountdown.then((f) => f());
       unlistenClose.then((f) => f());
+      unlistenChapterCmd.then((f) => f());
     };
   }, []);
 
@@ -293,6 +318,16 @@ export function PrompterPage({ scriptId }: Props) {
         e.preventDefault();
         setShowVoiceDebug((v) => !v);
       }
+      if (e.key === "<" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        onPrevChapterRef.current();
+        return;
+      }
+      if (e.key === ">" || e.key === "ArrowRight") {
+        e.preventDefault();
+        onNextChapterRef.current();
+        return;
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -313,7 +348,18 @@ export function PrompterPage({ scriptId }: Props) {
     setTimeout(tick, 1000);
   }
 
-  const effectiveSpeed = state.scrollSpeed * (state.voiceFollowing ? voiceMultiplier : 1);
+  // Absolute floor for "slow down (keep crawling)" applied ONLY during actual
+  // silence (envelope < 1, meaning silence has started decaying). During active
+  // voice the floor is off so voice tracking can still slow the prompter
+  // visibly when the speaker falls behind. ~0.5 ≈ 75 px/s ≈ one line every
+  // 1-2 seconds — slow but obviously moving. "stop" mode never engages it.
+  const MIN_CRAWL_SPEED = 0.5;
+  const rawEffective = state.scrollSpeed * (state.voiceFollowing ? voiceMultiplier : 1);
+  const slowMode = state.voiceFollowing && state.voiceSilenceBehavior !== "stop";
+  const inSilence = silenceEnvelopeRef.current < 1;
+  const effectiveSpeed = slowMode && inSilence
+    ? Math.max(MIN_CRAWL_SPEED, rawEffective)
+    : rawEffective;
   useScroll(scrollContainerRef, {
     speed: effectiveSpeed,
     isPlaying: state.isPlaying && countdown == null,
@@ -371,7 +417,9 @@ export function PrompterPage({ scriptId }: Props) {
   // matching paragraph card in the script list.
   useEffect(() => {
     if (totalChapters === 0) return;
-    emit("prompter:chapter", { index: chapterIndex }).catch(() => undefined);
+    emit("prompter:chapter", { index: chapterIndex, total: totalChapters }).catch(
+      () => undefined,
+    );
   }, [chapterIndex, totalChapters]);
 
   function scrollToChapter(i: number) {
@@ -385,6 +433,10 @@ export function PrompterPage({ scriptId }: Props) {
   }
   const onPrevChapter = () => scrollToChapter(Math.max(0, chapterIndex - 1));
   const onNextChapter = () => scrollToChapter(Math.min(totalChapters - 1, chapterIndex + 1));
+  const onPrevChapterRef = useRef(onPrevChapter);
+  const onNextChapterRef = useRef(onNextChapter);
+  onPrevChapterRef.current = onPrevChapter;
+  onNextChapterRef.current = onNextChapter;
 
   // Clear highlight when voice-following turns off so a stale word doesn't linger.
   useEffect(() => {

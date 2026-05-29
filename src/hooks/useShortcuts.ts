@@ -1,3 +1,4 @@
+import { emit } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 import { usePrompter } from "../store/prompter";
 import { usePrompterBridge } from "./usePrompterBridge";
@@ -57,6 +58,20 @@ export function useShortcuts() {
         case "Escape":
           e.preventDefault();
           closePrompter();
+          break;
+        case "<":
+        case "ArrowLeft":
+          if (!e.metaKey && !e.ctrlKey && prompterOpen) {
+            e.preventDefault();
+            emit("prompter:chapter-cmd", { direction: "prev" }).catch(() => undefined);
+          }
+          break;
+        case ">":
+        case "ArrowRight":
+          if (!e.metaKey && !e.ctrlKey && prompterOpen) {
+            e.preventDefault();
+            emit("prompter:chapter-cmd", { direction: "next" }).catch(() => undefined);
+          }
           break;
       }
     };

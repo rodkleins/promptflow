@@ -8,7 +8,8 @@ interface Props {
   currentChapter: number; // 1-indexed; 0 if no chapters
   totalChapters: number;
   fontSize: number;
-  counterTransform: string;
+  counterTransform?: string;
+  containerClassName?: string;
   onPrevChapter: () => void;
   onNextChapter: () => void;
 }
@@ -61,7 +62,8 @@ export function PrompterTransportBar({
   currentChapter,
   totalChapters,
   fontSize,
-  counterTransform,
+  counterTransform = "none",
+  containerClassName = "absolute right-0 bottom-6 left-0 flex justify-center",
   onPrevChapter,
   onNextChapter,
 }: Props) {
@@ -71,7 +73,7 @@ export function PrompterTransportBar({
 
   return (
     <div
-      className="absolute right-0 bottom-6 left-0 flex justify-center"
+      className={containerClassName}
       style={{ transform: counterTransform }}
     >
       <div className="flex items-center gap-2 rounded-full bg-black/75 px-3 py-2 backdrop-blur">
